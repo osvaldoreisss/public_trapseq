@@ -1,0 +1,23 @@
+samples: config/samples.csv
+
+threads: 10
+
+ref:
+    index: resources/kallisto_reference
+    gtf: resources/Homo_sapiens.GRCh38.95.gtf
+    tx2gene: resources/tx2gene.csv
+
+params:
+    trim:
+        - "--trim-n"
+        - "--minimum-length 50"
+    bowtie2:
+        - "--local" 
+        - "-L 15" 
+        - "-i S,1,0.5" 
+        - "-k 1"  
+        - "-x resources/contamination"
+    kallisto:
+        - "--bias"
+        - "--fr-stranded" 
+        - "--genomebam"

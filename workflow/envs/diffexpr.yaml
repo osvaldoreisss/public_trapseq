@@ -1,0 +1,14 @@
+channels:
+  - conda-forge
+  - bioconda
+  - r
+
+dependencies:
+  - r =3.6.0
+  - bioconductor-deseq2 =1.26
+  - bioconductor-tximport =1.14.0
+  - bioconductor-ihw =1.14.0
+  - r-ggplot2 =3.2.1
+  - r-rcolorbrewer =1.1_2
+  - r-pheatmap =1.0.12
+  - bioconductor-biomart =2.42.0

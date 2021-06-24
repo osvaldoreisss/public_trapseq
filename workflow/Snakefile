@@ -1,0 +1,131 @@
+# The main entry point of your workflow.
+# After configuring, running snakemake -n in a clone of this repository should successfully execute a dry-run of the workflow.
+
+
+report: "report/workflow.rst"
+
+# Allow users to fix the underlying OS via singularity.
+singularity: "docker://continuumio/miniconda3"
+
+
+import pandas as pd
+
+configfile: 'config/config.yaml'
+
+threads=config['threads']
+samples_file = config['samples']
+samples = pd.read_table(samples_file, sep=",").set_index(["sample"], drop=False)
+
+
+
+
+rule all:
+    input: 
+        "results/diffexpr/tabela.DE.kallisto.txt"
+
+rule get_fastq_pe:
+    output:
+        # the wildcard name must be accession, pointing to an SRA number
+        "results/fastq/{accession}_1.fastq",
+        "results/fastq/{accession}_2.fastq"
+    params:
+        # optional extra arguments
+        extra=""
+    threads: 6  # defaults to 6
+    wrapper:
+        "v0.75.0/bio/sra-tools/fasterq-dump"
+
+rule trim_galore:
+    input: 
+        "results/fastq/{accession}_1.fastq",
+        "results/fastq/{accession}_2.fastq"
+    output: 
+        directory("results/quality_analysis/{accession}")
+    conda:
+        "envs/trim_galore.yaml"
+    threads: threads
+    params:
+        **config["params"]
+    log: 
+        "results/logs/trim_galore/{accession}.log"
+    shell:
+        "trim_galore {params.trim} --cores {threads} --output_dir {output} {input} 2> {log}"
+
+rule concatenate_rv_comp:
+    input: 
+        lambda wildcards: \
+            [f"results/quality_analysis/{accession}" \
+                for accession in samples.loc[(wildcards.sample), ["accession"]]['accession'].dropna()
+            ]
+    output: 
+        fq1="results/concatenated/{sample}.R1.fq.gz",
+        fq2="results/concatenated/{sample}.R2.fq.gz"
+    threads: 1
+    log:
+        "results/logs/concatenate/{sample}.log"
+    shell:
+        """
+        set +e
+        FQ1=`echo {input} | awk '{{for(X=1;X<=NF;X++){{OUT=OUT $X"/*val_1.fq.gz "}}}}END{{print OUT}}'`
+        FQ2=`echo {input} | awk '{{for(X=1;X<=NF;X++){{OUT=OUT $X"/*val_2.fq.gz "}}}}END{{print OUT}}'`
+        echo $FQ1
+        echo $FQ2
+        cat $FQ1 > {output.fq1} 2> {log}
+        cat $FQ2 > {output.fq2} 2>> {log}
+        """
+
+
+rule remove_contamination:
+    input: 
+        fq1="results/concatenated/{sample}.R1.fq.gz",
+        fq2="results/concatenated/{sample}.R2.fq.gz"
+    output: 
+        aligned="results/contamined/{sample}.sam",
+        unaligned_fq1="results/contamination_free/{sample}.1.fq.gz",
+        unaligned_fq2="results/contamination_free/{sample}.2.fq.gz"
+    conda:
+        "envs/bowtie.yaml"
+    threads: threads
+    params:
+        **config["params"]
+    log:
+        "results/logs/bowtie2/{sample}.log",
+
+    shell:
+        """
+        out=`echo {output.unaligned_fq1} | sed 's/.1.fq.gz/.%.fq.gz/'`
+        bowtie2 {params.bowtie2} -p {threads} --un-conc-gz $out -1 {input.fq1} -2 {input.fq2} -S {output.aligned} 2> {log}
+        """
+
+rule kallisto:
+    input: 
+        "results/contamination_free/{sample}.1.fq.gz",
+        "results/contamination_free/{sample}.2.fq.gz"
+    output:
+        ofq1=directory("results/kallisto/{sample}")
+    conda:
+        "envs/kallisto.yaml"
+    threads: threads
+    params:
+        index=config["ref"]["index"],
+        gtf=config['ref']['gtf'],
+        extra=config['params']['kallisto']
+    log:
+        "results/logs/kallisto/{sample}.log"
+    shell:
+        "kallisto quant -t {threads} {params.extra} " 
+        "-g {params.gtf} "
+        "-i {params.index} -o {output} {input} > {log} 2>&1"
+
+rule expression_analysis:
+    input:
+        expand("results/kallisto/{sample}", sample=samples['sample']) 
+    output:
+        "results/diffexpr/tabela.DE.kallisto.txt"
+    conda:
+        "envs/diffexpr.yaml"
+    params:
+        samples_file=samples_file,
+        transcripts_to_genes=config['ref']['tx2gene']
+    script:
+        "../script/kallisto_deseq2.R"
