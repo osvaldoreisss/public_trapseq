@@ -16,17 +16,18 @@ print("\n\n")
 head(snakemake@params[["samples_file"]])
 print("\n\n")
 samples_table <- read.csv(snakemake@params[["samples_file"]], header = TRUE, sep=",")
-samples <- samples_table$sample
-files <- file.path("kallisto",samples, "abundance.tsv")
+samples_table <- samples_table[!duplicated(samples_table$sample), ]
+samples <- unique(samples_table$sample)
+files <- file.path("results/kallisto",samples, "abundance.tsv")
 names(files) <- samples
 files
 print("\n\n")
 #Importa os resultados de expressão de cada biblioteca
 txi.kallisto.tsv <- tximport(files, type = "kallisto",  tx2gene = tx2gene, dropInfReps = TRUE)
-head(samples)
+print(samples)
 head(txi.kallisto.tsv$counts)
-colnames(txi.kallisto.tsv$counts) <- samples
-head(txi.kallisto.tsv$counts)
+#colnames(txi.kallisto.tsv$counts) <- samples
+dim(txi.kallisto.tsv$counts)
 
 colDatak <-data.frame(row.names=colnames(txi.kallisto.tsv$counts), condition=as.factor(samples_table$condition), type=as.factor(samples_table$type))
 colDatak
@@ -67,12 +68,21 @@ print("Results")
 ddsk$group <- factor(paste0(ddsk$type, "_", ddsk$condition))
 design(ddsk) <- ~ group
 ddsk <- DESeq(ddsk)
+print(ddsk$group)
 
 #Comparações que serão feitas
-res_ribo_S0_S14<-results(ddsk, contrast=c("group","ribo_D14","ribo_NPC"),  filterFun=ihw)
-res_rna_S0_S14<-results(ddsk, contrast=c("group","rna_D14","rna_NPC"),  filterFun=ihw)
-res_ribo_S0_rna_S0<-results(ddsk, contrast=c("group","ribo_NPC","rna_NPC"),  filterFun=ihw)
-res_ribo_S14_rna_S14<-results(ddsk, contrast=c("group","ribo_D14","rna_D14"),  filterFun=ihw)
+res_trap_npc_neuron<-results(ddsk, contrast=c("group","trap_Neuron","trap_NPC"),  filterFun=ihw)
+res_rna_npc_neuron<-results(ddsk, contrast=c("group","rna_Neuron","rna_NPC"),  filterFun=ihw)
+res_trap_npc_rna_npc<-results(ddsk, contrast=c("group","trap_NPC","rna_NPC"),  filterFun=ihw)
+res_trap_neuron_rna_neuron<-results(ddsk, contrast=c("group","trap_Neuron","rna_Neuron"),  filterFun=ihw)
+
+design(ddsk) <- ~ type + condition + type:condition
+ddsk <- DESeq(ddsk, test = "LRT", reduced = ~type + condition)
+resk <- results(ddsk,  filterFun=ihw)
+
+res_neuron <- results(ddsk, name="typetrap.conditionNPC", test="Wald")
+
+print(resultsNames(ddsk))
 
 #Adiciona anotação para os genes
 split_gene_id <- function(word){
@@ -80,16 +90,16 @@ split_gene_id <- function(word){
     #unlist(strsplit(my.string, ".", fixed = TRUE))[1]
 }
 
-gene_id = apply(as.matrix(rownames(res)), 1, split_gene_id)
+gene_id = apply(as.matrix(rownames(resk)), 1, split_gene_id)
 
-rownames(res) <- gene_id
+rownames(resk) <- gene_id
 
-res$ensembl_id <- rownames(res)
-martk <- biomaRt::useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
-genes.tablek <- biomaRt::getBM(attributes = c("ensembl_gene_id", "external_gene_name", "description", "gene_biotype"), mart = martk)
-res <- merge(x = as.matrix(res), y = genes.tablek, by.x = "ensembl_id", by.y = "ensembl_gene_id", all.x = T, all.y = F )
+resk$ensembl_id <- rownames(resk)
+#martk <- biomaRt::useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+#genes.tablek <- biomaRt::getBM(attributes = c("ensembl_gene_id", "external_gene_name", "description", "gene_biotype"), mart = martk)
+#resk <- merge(x = as.matrix(resk), y = genes.tablek, by.x = "ensembl_id", by.y = "ensembl_gene_id", all.x = T, all.y = F )
 counts_normalizedk<-counts(ddsk, normalized=TRUE)
 counts_rawk<-counts(ddsk)
-Tabelao<-cbind(res,counts_rawk,counts_normalizedk)
+Tabelao<-cbind(res_trap_npc_neuron,res_rna_npc_neuron,res_trap_npc_rna_npc,res_trap_neuron_rna_neuron,resk,res_neuron,counts_rawk,counts_normalizedk)
 
 write.table(as.data.frame(Tabelao),file=snakemake@output[[1]], sep = "\t")

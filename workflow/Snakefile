@@ -30,7 +30,7 @@ rule get_fastq_pe:
         "results/fastq/{accession}_2.fastq"
     params:
         # optional extra arguments
-        extra=""
+        extra="-t tmp"
     threads: 6  # defaults to 6
     wrapper:
         "v0.75.0/bio/sra-tools/fasterq-dump"
@@ -66,8 +66,8 @@ rule concatenate_rv_comp:
     shell:
         """
         set +e
-        FQ1=`echo {input} | awk '{{for(X=1;X<=NF;X++){{OUT=OUT $X"/*val_1.fq.gz "}}}}END{{print OUT}}'`
-        FQ2=`echo {input} | awk '{{for(X=1;X<=NF;X++){{OUT=OUT $X"/*val_2.fq.gz "}}}}END{{print OUT}}'`
+        FQ1=`echo {input} | awk '{{for(X=1;X<=NF;X++){{OUT=OUT $X"/*_1_val_1.fq.gz "}}}}END{{print OUT}}'`
+        FQ2=`echo {input} | awk '{{for(X=1;X<=NF;X++){{OUT=OUT $X"/*_2_val_2.fq.gz "}}}}END{{print OUT}}'`
         echo $FQ1
         echo $FQ2
         cat $FQ1 > {output.fq1} 2> {log}
@@ -128,4 +128,4 @@ rule expression_analysis:
         samples_file=samples_file,
         transcripts_to_genes=config['ref']['tx2gene']
     script:
-        "../script/kallisto_deseq2.R"
+        "./scripts/kallisto_deseq2.R"

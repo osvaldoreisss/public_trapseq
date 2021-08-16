@@ -10,14 +10,18 @@ ref:
 params:
     trim:
         - "--trim-n"
-        - "--minimum-length 50"
+        - "--fastqc"
+        - "--length 50"
+        - "--gzip"
+        - "--paired"
     bowtie2:
         - "--local" 
         - "-L 15" 
         - "-i S,1,0.5" 
-        - "-k 1"  
+        - "-k 1"
+        - "--rf"
         - "-x resources/contamination"
     kallisto:
         - "--bias"
-        - "--fr-stranded" 
+        - "--rf-stranded" 
         - "--genomebam"
